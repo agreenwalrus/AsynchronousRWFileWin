@@ -15,8 +15,17 @@ int main (void)
 {
 	struct FileMappingInformation fileMapping;
 	char massage[BUF_SIZE];
-	HANDLE hFileHasBeenReadEvent, hFileHasBeenWrittenEvent, hFMapHasBeenReadEvent, hFMapHasBeenWrittenEvent, hAsyncWritingIsDoneEvent;
+	HANDLE	hFileHasBeenReadEvent, hFileHasBeenWrittenEvent, 
+			hFMapHasBeenReadEvent, hFMapHasBeenWrittenEvent, 
+			hAsyncWritingIsDoneEvent, hFile;
 	struct ThreadInformation thread;
+
+	DWORD nBytesToWrite      = BUF_SIZE;
+    DWORD dwBytesWritten       = 0;
+    DWORD dwFileSize;
+	OVERLAPPED stOverlapped = {0};
+	DWORD dwError  = 0;
+	BOOL bResult   = FALSE;
 
 	char *names[] = {
 		".\MyFileMappingObject\0",		//name of file mapping objct
@@ -25,7 +34,7 @@ int main (void)
 		"FileMappingObjHasBeenReadEvent\0",
 		"FileMappingObjHasBeenWrittenEvent\0",
 		"AsynchronousWritingFileEvent\0",
-		"OutputFile",
+		"C:/Users/Greenwalrus/Google\ Диск/LabWorks/4Term/SSA/Spo_lab_5_files/OutputFile.txt\0",
 		NULL
 	};
 
@@ -97,20 +106,58 @@ int main (void)
 		return -1;
 	}
 
+	hFile = CreateFile(names[6],               // file to open
+					   GENERIC_WRITE,          // open for writing
+					   FILE_SHARE_WRITE,       // share for writing
+                       NULL,                   // default security
+					   OPEN_ALWAYS,            // existing file only
+                       FILE_FLAG_OVERLAPPED,   // overlapped operation
+                       NULL);                  // no attr. template
+ 
+    if (hFile == INVALID_HANDLE_VALUE) 
+    { 
+        printf("Could not open file (%d): %s\n",  GetLastError(), names[6]); 
+        getchar ();
+		ExitThread (-1);
+    }
+
+
+	
+
 	//while (1)
 	//{
 		
-		if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
-			WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
-			//get inf from chld thread
-			//strcpy (massage, (char*) fileMapping.pBuf);
-			printf ("\nGet message: ");
-			puts ((char*) fileMapping.pBuf);
-			SetEvent (hFMapHasBeenReadEvent);
-			//write here to file
-			SetEvent (hFileHasBeenWrittenEvent);
-		} //else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
-	//}
+	//if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
+		WaitForSingleObject (hFileHasBeenReadEvent, INFINITE);
+		WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
+		//get inf from chld thread
+		//strcpy (massage, (char*) fileMapping.pBuf);
+		//printf ("\nGet message: ");
+		//
+		dwFileSize = GetFileSize(hFile, NULL);
+		stOverlapped.hEvent = hAsyncWritingIsDoneEvent;
+
+		stOverlapped.Offset = dwFileSize;
+
+		bResult = WriteFile (hFile, (char*) fileMapping.pBuf, strlen ((char*) fileMapping.pBuf), &dwBytesWritten, &stOverlapped);
+     
+		dwError = GetLastError();
+		
+		if (!bResult && dwError && dwError != ERROR_IO_PENDING)
+		{
+			printf ("\nError of writing file file (%x).", dwError);
+			getchar ();
+			ExitThread (-1);
+		}
+
+		WaitForSingleObject (hAsyncWritingIsDoneEvent, INFINITE);
+			
+		//puts ((char*) fileMapping.pBuf);
+		SetEvent (hFMapHasBeenReadEvent);
+		//write here to file
+		SetEvent (hFileHasBeenWrittenEvent);
+	//} //else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
+//}
 
 	//close all handles
 	UnmapViewOfFile (fileMapping.pBuf);
