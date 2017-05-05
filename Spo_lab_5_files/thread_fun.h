@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 #include "WIN_API_help.h"
-//#include "aio_file.h"
+#include "aio_file.h"
 
 DWORD WINAPI readFileThread (LPVOID lpParam);
 

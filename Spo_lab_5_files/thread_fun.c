@@ -126,30 +126,16 @@ DWORD WINAPI readFileThread (LPVOID lpParam)
 
 		while (dwFileSize)
 		{
-			//dwFileSize -= ReadFile_gw(hFile, (char*)fileMapping.pBuf, BUF_SIZE, &stOverlapped, hAsyncReadingIsDoneEvent);
+			dwBytesRead = ReadFile_gw(hFile, (char*)fileMapping.pBuf, BUF_SIZE, &stOverlapped);
 
-			bResult = ReadFile(hFile,
-								(char*) fileMapping.pBuf,
-								nBytesToRead,
-								NULL,//&dwBytesRead,
-								&stOverlapped); 
-			dwError = GetLastError();
-			if (!bResult && dwError && dwError != ERROR_IO_PENDING)
+			if (dwBytesRead == -1)
 			{
-				printf ("\nError of reading file (%x).", dwError);
-				getchar ();
+				printf ("\nError of reading file");
 				ExitThread (-1);
 			}
-			
-			WaitForSingleObject (hAsyncReadingIsDoneEvent, INFINITE);
-			bResult = GetOverlappedResult(hFile,
-                                        &stOverlapped,
-                                        &dwBytesRead,
-                                        FALSE) ;
-			((char*) fileMapping.pBuf)[dwBytesRead] = '\0';
-			stOverlapped.Offset += dwBytesRead;
+
 			dwFileSize -= dwBytesRead;
-			//////
+
 			SetEvent (hFileHasBeenReadEvent);
 			SetEvent (hFMapHasBeenWrittenEvent);
 			WaitForSingleObject (hFMapHasBeenReadEvent, INFINITE);
@@ -169,7 +155,6 @@ DWORD WINAPI readFileThread (LPVOID lpParam)
 	CloseHandle (hFMapHasBeenReadEvent);
 	CloseHandle (hAsyncReadingIsDoneEvent);
 	CloseHandle (hFile);
-
 
 	ExitThread (0);
 }
