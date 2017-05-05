@@ -1,6 +1,6 @@
 #include <Windows.h>
 #include <stdio.h>
-#include "aio_file.h"
+//#include "aio_file.h"
 #include "thread_fun.h"
 #include "WIN_API_help.h"
 
@@ -14,7 +14,6 @@ and writes it in file
 int main (void)
 {
 	struct FileMappingInformation fileMapping;
-	char massage[BUF_SIZE];
 	HANDLE	hFileHasBeenReadEvent, hFileHasBeenWrittenEvent, 
 			hFMapHasBeenReadEvent, hFMapHasBeenWrittenEvent, 
 			hAsyncWritingIsDoneEvent, hFile;
@@ -28,13 +27,13 @@ int main (void)
 	BOOL bResult   = FALSE;
 
 	char *names[] = {
-		".\MyFileMappingObject\0",		//name of file mapping objct
+		"./MyFileMappingObject\0",		//name of file mapping objct
 		"FileHasBeenReadEvent\0",				//name of event that file's been read
 		"FileHasBeenWrittenEvent\0",			//etc
 		"FileMappingObjHasBeenReadEvent\0",
 		"FileMappingObjHasBeenWrittenEvent\0",
 		"AsynchronousWritingFileEvent\0",
-		"C:/Users/Greenwalrus/Google\ Диск/LabWorks/4Term/SSA/Spo_lab_5_files/OutputFile.txt\0",
+		"C:\\Users\\Greenwalrus\\Google\ Диск\\LabWorks\\4Term\\SSA\\Spo_lab_5_files\\OutputFile.txt\0",
 		NULL
 	};
 
@@ -64,31 +63,31 @@ int main (void)
 	}
 
 	if ( !(hFileHasBeenReadEvent = CreateEvent (NULL, FALSE, FALSE, names[1])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[1], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[1], GetLastError());
 		getchar ();
 		return -1;
 	}
 
 	if ( !(hFileHasBeenWrittenEvent = CreateEvent (NULL, FALSE, FALSE, names[2])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[2], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[2], GetLastError());
 		getchar ();
 		return -1;
 	}
 
 	if ( !(hFMapHasBeenReadEvent = CreateEvent (NULL, FALSE, FALSE, names[3])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[3], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[3], GetLastError());
 		getchar ();
 		return -1;
 	}
 
 	if ( !(hFMapHasBeenWrittenEvent = CreateEvent (NULL, FALSE, FALSE, names[4])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[4], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[4], GetLastError());
 		getchar ();
 		return -1;
 	}
 
 	if ( !(hAsyncWritingIsDoneEvent = CreateEvent (NULL, FALSE, FALSE, names[5])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[5], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[5], GetLastError());
 		getchar ();
 		return -1;
 	}
@@ -97,7 +96,7 @@ int main (void)
 								NULL,															// default security attributes
 								0,																// use default stack size
 								readFileThread,													// thread function name
-								NULL,															// argument to thread function
+								"D:/TestFiles\0",															// argument to thread function
 								0,																// use default creation flags
 								&thread.identifier))) {
 																								// returns the thread identifier
@@ -118,52 +117,64 @@ int main (void)
     { 
         printf("Could not open file (%d): %s\n",  GetLastError(), names[6]); 
         getchar ();
+		TerminateThread (thread.handle, -1);
 		ExitThread (-1);
     }
 
-
+	
+	stOverlapped.hEvent = hAsyncWritingIsDoneEvent;
 	
 
-	//while (1)
-	//{
+	while (1)
+	{
 		
-	//if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
-		WaitForSingleObject (hFileHasBeenReadEvent, INFINITE);
-		WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
-		//get inf from chld thread
-		//strcpy (massage, (char*) fileMapping.pBuf);
-		//printf ("\nGet message: ");
-		//
-		dwFileSize = GetFileSize(hFile, NULL);
-		stOverlapped.hEvent = hAsyncWritingIsDoneEvent;
+		if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
+			WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
 
-		stOverlapped.Offset = dwFileSize;
+			dwFileSize = GetFileSize(hFile, NULL);
+			stOverlapped.Offset = dwFileSize;
 
-		bResult = WriteFile (hFile, (char*) fileMapping.pBuf, strlen ((char*) fileMapping.pBuf), &dwBytesWritten, &stOverlapped);
+			bResult = WriteFile (hFile, (char*) fileMapping.pBuf, strlen ((char*) fileMapping.pBuf), &dwBytesWritten, &stOverlapped);
      
-		dwError = GetLastError();
+			dwError = GetLastError();
 		
-		if (!bResult && dwError && dwError != ERROR_IO_PENDING)
-		{
-			printf ("\nError of writing file file (%x).", dwError);
-			getchar ();
-			ExitThread (-1);
-		}
+			if (!bResult && dwError && dwError != ERROR_IO_PENDING)
+			{
+				printf ("\nError of writing file file (%x).", dwError);
+				UnmapViewOfFile (fileMapping.pBuf);
+				CloseHandle (fileMapping.hMapFile);
+				CloseHandle (thread.handle);
+				CloseHandle (hFileHasBeenReadEvent);
+				CloseHandle (hFileHasBeenWrittenEvent);
+				CloseHandle (hFMapHasBeenWrittenEvent);
+				CloseHandle (hFMapHasBeenReadEvent);
+				CloseHandle (hAsyncWritingIsDoneEvent);
+				CloseHandle (hFile);
+				ExitThread (-1);
+			}
 
-		WaitForSingleObject (hAsyncWritingIsDoneEvent, INFINITE);
-			
-		//puts ((char*) fileMapping.pBuf);
-		SetEvent (hFMapHasBeenReadEvent);
-		//write here to file
-		SetEvent (hFileHasBeenWrittenEvent);
-	//} //else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
-//}
+			WaitForSingleObject (hAsyncWritingIsDoneEvent, INFINITE);
+			bResult = GetOverlappedResult(hFile,
+                                        &stOverlapped,
+                                        &dwBytesWritten,
+                                        FALSE) ;
+			stOverlapped.Offset += dwBytesWritten;
+			SetEvent (hFMapHasBeenReadEvent);
+			SetEvent (hFileHasBeenWrittenEvent);
+		} else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
+	}
 
-	//close all handles
 	UnmapViewOfFile (fileMapping.pBuf);
 	CloseHandle (fileMapping.hMapFile);
-	//WaitForSingleObject (thread.handle, INFINITE);
 	CloseHandle (thread.handle);
+	CloseHandle (hFileHasBeenReadEvent);
+	CloseHandle (hFileHasBeenWrittenEvent);
+	CloseHandle (hFMapHasBeenWrittenEvent);
+	CloseHandle (hFMapHasBeenReadEvent);
+	CloseHandle (hAsyncWritingIsDoneEvent);
+	CloseHandle (hFile);
+	
+	printf ("Press any key...");
 	getchar ();
 
 	return 0;

@@ -3,7 +3,7 @@
 
 #include <Windows.h>
 
-#define BUF_SIZE 100
+#define BUF_SIZE 101
 
 
 struct FileMappingInformation

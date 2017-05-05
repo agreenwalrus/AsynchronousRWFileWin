@@ -8,10 +8,13 @@ and send it to main thread
 DWORD WINAPI readFileThread (LPVOID lpParam)
 {
 	struct FileMappingInformation fileMapping;
-	char massage[BUF_SIZE];
+	char dir[MAX_PATH], mask[] = "/*.txt\0", maskDir[MAX_PATH];
 	HANDLE	hFileHasBeenReadEvent,		hFileHasBeenWrittenEvent,
 			hFMapHasBeenReadEvent,		hFMapHasBeenWrittenEvent,
-			hAsyncReadingIsDoneEvent,	hFile;
+			hAsyncReadingIsDoneEvent,	hFile,
+			hFindFile = INVALID_HANDLE_VALUE;
+
+	WIN32_FIND_DATA ffd;
 
 	DWORD nBytesToRead      = BUF_SIZE;
     DWORD dwBytesRead       = 0;
@@ -21,15 +24,23 @@ DWORD WINAPI readFileThread (LPVOID lpParam)
 	BOOL bResult   = FALSE;
 
 	char *names[] = {
-		".\MyFileMappingObject\0",
+		"./MyFileMappingObject\0",
 		"FileHasBeenReadEvent\0",
 		"FileHasBeenWrittenEvent\0",
 		"FileMappingObjHasBeenReadEvent\0",
 		"FileMappingObjHasBeenWrittenEvent\0",
 		"AsynchronousReadingFileEvent\0",
-		"C:/Users/Greenwalrus/Google\ Диск/LabWorks/4Term/SSA/Spo_lab_5_files/input_file.txt\0",
 		NULL
 	};
+
+	strcpy_s (dir, MAX_PATH, (char*) lpParam);
+
+	if (strlen (dir) + strlen (mask) > MAX_PATH)
+		ExitThread (-1);
+	else{
+		strcpy_s (maskDir, MAX_PATH, dir);
+		strcat_s (maskDir, MAX_PATH, mask);
+	}
 
 	if ( !(fileMapping.hMapFile = OpenFileMapping (
 										FILE_MAP_ALL_ACCESS,			//read/write access
@@ -52,36 +63,49 @@ DWORD WINAPI readFileThread (LPVOID lpParam)
 	}
 
 	if ( !(hFileHasBeenReadEvent = CreateEvent (NULL, FALSE, FALSE, names[1])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[1], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[1], GetLastError());
 		getchar ();
 		ExitThread (-1);
 	}
 
 	if ( !(hFileHasBeenWrittenEvent = CreateEvent (NULL, FALSE, FALSE, names[2])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[2], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[2], GetLastError());
 		getchar ();
 		ExitThread (-1);
 	}
 
 	if ( !(hFMapHasBeenReadEvent = CreateEvent (NULL, FALSE, FALSE, names[3])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[3], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[3], GetLastError());
 		getchar ();
 		ExitThread (-1);
 	}
 
 	if ( !(hFMapHasBeenWrittenEvent = CreateEvent (NULL, FALSE, FALSE, names[4])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[4], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[4], GetLastError());
 		getchar ();
 		ExitThread (-1);
 	}
 
 	if ( !(hAsyncReadingIsDoneEvent = CreateEvent (NULL, FALSE, FALSE, names[5])) ){
-		printf ("\Creation of %s is failed (%x) main.c.", names[5], GetLastError());
+		printf ("\nCreation of %s is failed (%x) main.c.", names[5], GetLastError());
 		getchar ();
 		ExitThread (-1);
 	} 
 
-	hFile = CreateFile(names[6],                // file to open
+
+	hFindFile = FindFirstFile(maskDir, &ffd);
+
+	if (INVALID_HANDLE_VALUE == hFindFile) 
+		ExitThread (-1);
+
+
+
+	do
+   {
+		strcpy_s (dir, MAX_PATH, (char*) lpParam);
+		strcat_s (dir, MAX_PATH, "/\0");
+		strcat_s (dir, MAX_PATH, ffd.cFileName);
+		hFile = CreateFile(dir,                // file to open
                        GENERIC_READ,           // open for reading
                        FILE_SHARE_READ,        // share for reading
                        NULL,                   // default security
@@ -89,64 +113,62 @@ DWORD WINAPI readFileThread (LPVOID lpParam)
                        FILE_FLAG_OVERLAPPED,   // overlapped operation
                        NULL);                  // no attr. template
  
-    if (hFile == INVALID_HANDLE_VALUE) 
-    { 
-        printf("Could not open file (%d): %s\n",  GetLastError(), names[6]); 
-        getchar ();
-		ExitThread (-1);
-    }
-	
-	dwFileSize = GetFileSize(hFile, NULL);
-	stOverlapped.hEvent = hAsyncReadingIsDoneEvent;
-
-	//while (1)
-	//{
-		//if (!strcmp(massage, "q\0"))//вместо этого
-			//break;					//проверк на конец файла
-		
-		// read here async file
-
-
-		bResult = ReadFile(hFile,
-                           (char*) fileMapping.pBuf,
-                           nBytesToRead,
-                           &dwBytesRead,
-                           &stOverlapped); 
-     
-        dwError = GetLastError();
-		
-		if (!bResult && dwError && dwError != ERROR_IO_PENDING)
-		{
-			printf ("\nError of reading file (%x).", dwError);
+		if (hFile == INVALID_HANDLE_VALUE) 
+		{ 
+			printf("Could not open file (%d): %s\n",  GetLastError(), dir); 
 			getchar ();
 			ExitThread (-1);
 		}
+	
+		dwFileSize = GetFileSize(hFile, NULL);
+		stOverlapped.Offset = 0;
+		stOverlapped.hEvent = hAsyncReadingIsDoneEvent;
 
-		WaitForSingleObject (hAsyncReadingIsDoneEvent, INFINITE);
+		while (dwFileSize)
+		{
+			//dwFileSize -= ReadFile_gw(hFile, (char*)fileMapping.pBuf, BUF_SIZE, &stOverlapped, hAsyncReadingIsDoneEvent);
 
-
-		// read here async file
-
-		SetEvent (hFileHasBeenReadEvent);
-
-		//send inf to main thred
-		/*printf ("\nPut in message: ");
-		gets ((char*) fileMapping.pBuf);
-		if (!strcmp((char*) fileMapping.pBuf, "q\0")) {	//вместо этого
+			bResult = ReadFile(hFile,
+								(char*) fileMapping.pBuf,
+								nBytesToRead,
+								NULL,//&dwBytesRead,
+								&stOverlapped); 
+			dwError = GetLastError();
+			if (!bResult && dwError && dwError != ERROR_IO_PENDING)
+			{
+				printf ("\nError of reading file (%x).", dwError);
+				getchar ();
+				ExitThread (-1);
+			}
+			
+			WaitForSingleObject (hAsyncReadingIsDoneEvent, INFINITE);
+			bResult = GetOverlappedResult(hFile,
+                                        &stOverlapped,
+                                        &dwBytesRead,
+                                        FALSE) ;
+			((char*) fileMapping.pBuf)[dwBytesRead] = '\0';
+			stOverlapped.Offset += dwBytesRead;
+			dwFileSize -= dwBytesRead;
+			//////
+			SetEvent (hFileHasBeenReadEvent);
 			SetEvent (hFMapHasBeenWrittenEvent);
-			break;
-		}*/
-		
-		//strcpy ((char*) fileMapping.pBuf, massage);
-		SetEvent (hFMapHasBeenWrittenEvent);
-		WaitForSingleObject (hFMapHasBeenReadEvent, INFINITE);
-
-		WaitForSingleObject (hFileHasBeenWrittenEvent, INFINITE);
-	//}
-
+			WaitForSingleObject (hFMapHasBeenReadEvent, INFINITE);
+			WaitForSingleObject (hFileHasBeenWrittenEvent, INFINITE);
+		}
+		CloseHandle (hFile);
+	} while (FindNextFile(hFindFile, &ffd) != 0);
+	
+	FindClose(hFindFile);
 	UnmapViewOfFile (fileMapping.pBuf);
 	CloseHandle (fileMapping.hMapFile);
-	//printf ("\nJulia is cool");
+	UnmapViewOfFile (fileMapping.pBuf);
+	CloseHandle (fileMapping.hMapFile);
+	CloseHandle (hFileHasBeenReadEvent);
+	CloseHandle (hFileHasBeenWrittenEvent);
+	CloseHandle (hFMapHasBeenWrittenEvent);
+	CloseHandle (hFMapHasBeenReadEvent);
+	CloseHandle (hAsyncReadingIsDoneEvent);
+	CloseHandle (hFile);
 
 
 	ExitThread (0);
