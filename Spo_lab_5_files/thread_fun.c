@@ -5,8 +5,12 @@ This thread reads information from files
 and send it to main thread
 */
 
+typedef DWORD (__cdecl *ReadAsFileProc) (HANDLE, char *, int , OVERLAPPED *);
+
 DWORD WINAPI readFileThread (LPVOID lpParam)
 {
+	HINSTANCE hinstLib;
+	ReadAsFileProc ReadAsFile;
 	struct FileMappingInformation fileMapping;
 	char dir[MAX_PATH], mask[] = "/*.txt\0", maskDir[MAX_PATH];
 	HANDLE	hFileHasBeenReadEvent,		hFileHasBeenWrittenEvent,
@@ -99,50 +103,55 @@ DWORD WINAPI readFileThread (LPVOID lpParam)
 		ExitThread (-1);
 
 
-
-	do
-   {
-		strcpy_s (dir, MAX_PATH, (char*) lpParam);
-		strcat_s (dir, MAX_PATH, "/\0");
-		strcat_s (dir, MAX_PATH, ffd.cFileName);
-		hFile = CreateFile(dir,                // file to open
-                       GENERIC_READ,           // open for reading
-                       FILE_SHARE_READ,        // share for reading
-                       NULL,                   // default security
-                       OPEN_EXISTING,          // existing file only
-                       FILE_FLAG_OVERLAPPED,   // overlapped operation
-                       NULL);                  // no attr. template
+	if ((hinstLib = LoadLibrary (TEXT("AsyncFileWork.dll"))) != NULL)
+	{
+		if ( (ReadAsFile = (ReadAsFileProc) GetProcAddress (hinstLib, "ReadFile_gw")) != NULL)
+			do
+		   {
+				strcpy_s (dir, MAX_PATH, (char*) lpParam);
+				strcat_s (dir, MAX_PATH, "/\0");
+				strcat_s (dir, MAX_PATH, ffd.cFileName);
+				hFile = CreateFile(dir,                // file to open
+							   GENERIC_READ,           // open for reading
+							   FILE_SHARE_READ,        // share for reading
+							   NULL,                   // default security
+							   OPEN_EXISTING,          // existing file only
+							   FILE_FLAG_OVERLAPPED,   // overlapped operation
+							   NULL);                  // no attr. template
  
-		if (hFile == INVALID_HANDLE_VALUE) 
-		{ 
-			printf("Could not open file (%d): %s\n",  GetLastError(), dir); 
-			getchar ();
-			ExitThread (-1);
-		}
+				if (hFile == INVALID_HANDLE_VALUE) 
+				{ 
+					printf("Could not open file (%d): %s\n",  GetLastError(), dir); 
+					getchar ();
+					ExitThread (-1);
+				}
 	
-		dwFileSize = GetFileSize(hFile, NULL);
-		stOverlapped.Offset = 0;
-		stOverlapped.hEvent = hAsyncReadingIsDoneEvent;
+				dwFileSize = GetFileSize(hFile, NULL);
+				stOverlapped.Offset = 0;
+				stOverlapped.hEvent = hAsyncReadingIsDoneEvent;
 
-		while (dwFileSize)
-		{
-			dwBytesRead = ReadFile_gw(hFile, (char*)fileMapping.pBuf, BUF_SIZE, &stOverlapped);
+				while (dwFileSize)
+				{
+					dwBytesRead = ReadAsFile(hFile, (char*)fileMapping.pBuf, BUF_SIZE, &stOverlapped);
 
-			if (dwBytesRead == -1)
-			{
-				printf ("\nError of reading file");
-				ExitThread (-1);
-			}
+					if (dwBytesRead == -1)
+					{
+						printf ("\nError of reading file");
+						ExitThread (-1);
+					}
 
-			dwFileSize -= dwBytesRead;
+					dwFileSize -= dwBytesRead;
 
-			SetEvent (hFileHasBeenReadEvent);
-			SetEvent (hFMapHasBeenWrittenEvent);
-			WaitForSingleObject (hFMapHasBeenReadEvent, INFINITE);
-			WaitForSingleObject (hFileHasBeenWrittenEvent, INFINITE);
-		}
-		CloseHandle (hFile);
-	} while (FindNextFile(hFindFile, &ffd) != 0);
+					SetEvent (hFileHasBeenReadEvent);
+					SetEvent (hFMapHasBeenWrittenEvent);
+					WaitForSingleObject (hFMapHasBeenReadEvent, INFINITE);
+					WaitForSingleObject (hFileHasBeenWrittenEvent, INFINITE);
+				}
+				CloseHandle (hFile);
+			} while (FindNextFile(hFindFile, &ffd) != 0);
+		else printf ("\nError of loading proc (%x)", GetLastError());
+		FreeLibrary(hinstLib);
+	} else printf ("\nError of loading library (%x)", GetLastError());
 	
 	FindClose(hFindFile);
 	UnmapViewOfFile (fileMapping.pBuf);

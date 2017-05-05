@@ -9,10 +9,12 @@ This thread gets information from another thread
 and writes it in file
 */
 
-
+typedef DWORD (__cdecl *WriteAsFileProc) (HANDLE, char *, OVERLAPPED *);
 
 int main (void)
-{
+{	
+	HINSTANCE hinstLib;
+	WriteAsFileProc WriteAsFile;
 	struct FileMappingInformation fileMapping;
 	HANDLE	hFileHasBeenReadEvent, hFileHasBeenWrittenEvent, 
 			hFMapHasBeenReadEvent, hFMapHasBeenWrittenEvent, 
@@ -21,7 +23,6 @@ int main (void)
 
 	DWORD nBytesToWrite      = BUF_SIZE;
     DWORD dwBytesWritten       = 0;
-    DWORD dwFileSize;
 	OVERLAPPED stOverlapped = {0};
 	DWORD dwError  = 0;
 	BOOL bResult   = FALSE;
@@ -125,27 +126,32 @@ int main (void)
 	
 	stOverlapped.hEvent = hAsyncWritingIsDoneEvent;
 	
-
-	while (1)
+	if ((hinstLib = LoadLibrary (TEXT("AsyncFileWork.dll"))) != NULL)
 	{
-		
-		if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
-			WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
-
-			dwBytesWritten = WriteFile_gw (hFile, (char*) fileMapping.pBuf, &stOverlapped);
-
-			if (dwBytesWritten == -1)
+		if ( (WriteAsFile = (WriteAsFileProc) GetProcAddress (hinstLib, "WriteFile_gw")) != NULL)
+			while (1)
 			{
-				printf ("\nError of writing file");
-				TerminateThread (thread.handle, -1);
-				WaitForSingleObject (thread.handle, INFINITE);
-				break;
-			}
+		
+				if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
+					WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
 
-			SetEvent (hFMapHasBeenReadEvent);
-			SetEvent (hFileHasBeenWrittenEvent);
-		} else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
-	}
+					dwBytesWritten = WriteAsFile (hFile, (char*) fileMapping.pBuf, &stOverlapped);
+
+					if (dwBytesWritten == -1)
+					{
+						printf ("\nError of writing file");
+						TerminateThread (thread.handle, -1);
+						WaitForSingleObject (thread.handle, INFINITE);
+						break;
+					}
+
+					SetEvent (hFMapHasBeenReadEvent);
+					SetEvent (hFileHasBeenWrittenEvent);
+				} else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
+			}
+		else printf ("\nError of loading proc (%x)", GetLastError());
+		FreeLibrary(hinstLib);
+	} else printf ("\nError of loading library (%x)", GetLastError());
 
 	UnmapViewOfFile (fileMapping.pBuf);
 	CloseHandle (fileMapping.hMapFile);
