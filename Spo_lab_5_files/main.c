@@ -118,6 +118,7 @@ int main (void)
         printf("Could not open file (%d): %s\n",  GetLastError(), names[6]); 
         getchar ();
 		TerminateThread (thread.handle, -1);
+		WaitForSingleObject (thread.handle, INFINITE);
 		ExitThread (-1);
     }
 
@@ -131,34 +132,16 @@ int main (void)
 		if (WaitForSingleObject (hFileHasBeenReadEvent, 10) == WAIT_OBJECT_0) {
 			WaitForSingleObject (hFMapHasBeenWrittenEvent, INFINITE);
 
-			dwFileSize = GetFileSize(hFile, NULL);
-			stOverlapped.Offset = dwFileSize;
+			dwBytesWritten = WriteFile_gw (hFile, (char*) fileMapping.pBuf, &stOverlapped);
 
-			bResult = WriteFile (hFile, (char*) fileMapping.pBuf, strlen ((char*) fileMapping.pBuf), &dwBytesWritten, &stOverlapped);
-     
-			dwError = GetLastError();
-		
-			if (!bResult && dwError && dwError != ERROR_IO_PENDING)
+			if (dwBytesWritten == -1)
 			{
-				printf ("\nError of writing file file (%x).", dwError);
-				UnmapViewOfFile (fileMapping.pBuf);
-				CloseHandle (fileMapping.hMapFile);
-				CloseHandle (thread.handle);
-				CloseHandle (hFileHasBeenReadEvent);
-				CloseHandle (hFileHasBeenWrittenEvent);
-				CloseHandle (hFMapHasBeenWrittenEvent);
-				CloseHandle (hFMapHasBeenReadEvent);
-				CloseHandle (hAsyncWritingIsDoneEvent);
-				CloseHandle (hFile);
-				ExitThread (-1);
+				printf ("\nError of writing file");
+				TerminateThread (thread.handle, -1);
+				WaitForSingleObject (thread.handle, INFINITE);
+				break;
 			}
 
-			WaitForSingleObject (hAsyncWritingIsDoneEvent, INFINITE);
-			bResult = GetOverlappedResult(hFile,
-                                        &stOverlapped,
-                                        &dwBytesWritten,
-                                        FALSE) ;
-			stOverlapped.Offset += dwBytesWritten;
 			SetEvent (hFMapHasBeenReadEvent);
 			SetEvent (hFileHasBeenWrittenEvent);
 		} else if (WaitForSingleObject (thread.handle, 10) == WAIT_OBJECT_0) break;
